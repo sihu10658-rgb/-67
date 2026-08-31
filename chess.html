@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>체스 게임</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #1e1e1e;
+            color: white;
+            font-family: sans-serif;
+            margin: 0;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 4px solid #444;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 38px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .light { background-color: #ebecd0; }
+        .dark { background-color: #779952; }
+        .selected { background-color: #baca44 !important; }
+        .highlight { background-color: #f5f682 !important; }
+        .check { background-color: #ff4d4d !important; }
+        #status {
+            margin-top: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>체스 게임 ♟️</h2>
+    <div id="board"></div>
+    <div id="status">백색 차례</div>
+
+    <script>
+        const pieceUnicode = {
+            p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚',
+            P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔'
+        };
+
+        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 10000 };
+
+        let board = [
+            [{type:'r',color:'b'},{type:'n',color:'b'},{type:'b',color:'b'},{type:'q',color:'b'},{type:'k',color:'b'},{type:'b',color:'b'},{type:'n',color:'b'},{type:'r',color:'b'}],
+            Array(8).fill(null).map(() => ({type:'p', color:'b'})),
+            Array(8).fill(null), Array(8).fill(null), Array(8).fill(null), Array(8).fill(null),
+            Array(8).fill(null).map(() => ({type:'p', color:'w'})),
+            [{type:'R',color:'w'},{type:'N',color:'w'},{type:'B',color:'w'},{type:'Q',color:'w'},{type:'K',color:'w'},{type:'B',color:'w'},{type:'N',color:'w'},{type:'R',color:'w'}]
+        ];
+
+        let turn = 'w';
+        let selectedSquare = null;
+        let validMoves = [];
+        let isGameOver = false;
+
+        function findKing(color, currentBoard) {
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = currentBoard[r][c];
+                    if (p && p.type === 'k' && p.color === color) {
+                        return { r, c };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function isSquareAttacked(r, c, attackerColor, currentBoard) {
+            for (let ar = 0; ar < 8; ar++) {
+                for (let ac = 0; ac < 8; ac++) {
+                    const p = currentBoard[ar][ac];
+                    if (p && p.color === attackerColor) {
+                        if (isValidBasicMove(ar, ac, r, c, currentBoard, true)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function inCheck(color, currentBoard) {
+            const kingPos = findKing(color, currentBoard);
+            if (!kingPos) return false;
+            const enemyColor = color === 'w' ? 'b' : 'w';
+            return isSquareAttacked(kingPos.r, kingPos.c, enemyColor, currentBoard);
+        }
+
+        function isValidBasicMove(r1, c1, r2, c2, currentBoard, isAttackCheck = false) {
+            const piece = currentBoard[r1][c1];
+            const target = currentBoard[r2][c2];
+            if (!piece) return false;
+            if (r1 === r2 && c1 === c2) return false;
+            if (target && target.color === piece.color && !isAttackCheck) return false;
+
+            const dr = r2 - r1;
+            const dc = c2 - c1;
+            const adr = Math.abs(dr);
+            const adc = Math.abs(dc);
+            const type = piece.type;
+
+            if (type === 'p') {
+                const dir = piece.color === 'w' ? -1 : 1;
+                const startRow = piece.color === 'w' ? 6 : 1;
+                if (c1 === c2 && !target) {
+                    if (dr === dir) return true;
+                    if (r1 === startRow && dr === dir * 2 && !currentBoard[r1 + dir][c1]) return true;
+                }
+                if (adc === 1 && dr === dir && target && target.color !== piece.color) return true;
+                return false;
+            }
+            if (type === 'n') {
+                return (adr === 2 && adc === 1) || (adr === 1 && adc === 2);
+            }
+            if (type === 'k') {
+                return adr <= 1 && adc <= 1;
+            }
+            if (type === 'r' || type === 'q') {
+                if (r1 === r2 || c1 === c2) {
+                    return isPathClear(r1, c1, r2, c2, currentBoard);
+                }
+            }
+            if (type === 'b' || type === 'q') {
+                if (adr === adc) {
+                    return isPathClear(r1, c1, r2, c2, currentBoard);
+                }
+            }
+            return false;
+        }
+
+        function isPathClear(r1, c1, r2, c2, currentBoard) {
+            const rd = Math.sign(r2 - r1);
+            const cd = Math.sign(c2 - c1);
+            let currR = r1 + rd;
+            let currC = c1 + cd;
+            while (currR !== r2 || currC !== c2) {
+                if (currentBoard[currR][currC]) return false;
+                currR += rd;
+                currC += cd;
+            }
+            return true;
+        }
+
+        function getLegalMoves(r, c) {
+            const piece = board[r][c];
+            if (!piece || piece.color !== turn) return [];
+            let legal = [];
+
+            for (let r2 = 0; r2 < 8; r2++) {
+                for (let c2 = 0; c2 < 8; c2++) {
+                    if (isValidBasicMove(r, c, r2, c2, board)) {
+                        const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
+                        tempBoard[r2][c2] = tempBoard[r][c];
+                        tempBoard[r][c] = null;
+
+                        if (!inCheck(turn, tempBoard)) {
+                            legal.push({ r: r2, c: c2 });
+                        }
+                    }
+                }
+            }
+            return legal;
+        }
+
+        function evaluateBoard(currentBoard) {
+            let score = 0;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = currentBoard[r][c];
+                    if (p) {
+                        const val = pieceValues[p.type];
+                        score += (p.color === 'w' ? val : -val);
+                    }
+                }
+            }
+            return score;
+        }
+
+        function makeAIMove() {
+            if (isGameOver || turn !== 'b') return;
+
+            let allMoves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (board[r][c] && board[r][c].color === 'b') {
+                        let legal = [];
+                        for (let r2 = 0; r2 < 8; r2++) {
+                            for (let c2 = 0; c2 < 8; c2++) {
+                                if (isValidBasicMove(r, c, r2, c2, board)) {
+                                    const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
+                                    tempBoard[r2][c2] = tempBoard[r][c];
+                                    tempBoard[r][c] = null;
+                                    if (!inCheck('b', tempBoard)) {
+                                        legal.push({ r: r2, c: c2 });
+                                    }
+                                }
+                            }
+                        }
+                        legal.forEach(m => allMoves.push({ from: {r, c}, to: m }));
+                    }
+                }
+            }
+
+            if (allMoves.length === 0) return;
+
+            let bestMove = allMoves[0];
+            let bestScore = 99999;
+            allMoves.sort(() => Math.random() - 0.5);
+
+            for (let move of allMoves) {
+                const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
+                tempBoard[move.to.r][move.to.c] = tempBoard[move.from.r][move.from.c];
+                tempBoard[move.from.r][move.from.c] = null;
+
+                let score = evaluateBoard(tempBoard);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+            }
+
+            board[bestMove.to.r][bestMove.to.c] = board[bestMove.from.r][bestMove.from.c];
+            board[bestMove.from.r][bestMove.from.c] = null;
+
+            if (board[bestMove.to.r][bestMove.to.c].type === 'p' && bestMove.to.r === 7) {
+                board[bestMove.to.r][bestMove.to.c].type = 'q';
+            }
+
+            turn = 'w';
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            const checkedColor = inCheck(turn, board) ? turn : null;
+            const kingPos = checkedColor ? findKing(checkedColor, board) : null;
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const square = document.createElement('div');
+                    square.classList.add('square');
+                    square.classList.add(((r + c) & 1) === 0 ? 'light' : 'dark');
+
+                    if (checkedColor && kingPos && kingPos.r === r && kingPos.c === c) {
+                        square.classList.add('check');
+                    } else if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+                        square.classList.add('selected');
+                    } else if (validMoves.some(m => m.r === r && m.c === c)) {
+                        square.classList.add('highlight');
+                    }
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        const key = piece.color === 'w' ? piece.type.toUpperCase() : piece.type.toLowerCase();
+                        square.textContent = pieceUnicode[key] || '';
+                    }
+
+                    square.addEventListener('click', () => handleSquareClick(r, c));
+                    boardEl.appendChild(square);
+                }
+            }
+            updateStatus();
+
+            if (!isGameOver && turn === 'b') {
+                setTimeout(makeAIMove, 300);
+            }
+        }
+
+        function handleSquareClick(r, c) {
+            if (isGameOver || turn !== 'w') return;
+
+            const piece = board[r][c];
+
+            if (selectedSquare) {
+                const found = validMoves.find(m => m.r === r && m.c === c);
+                if (found) {
+                    board[r][c] = board[selectedSquare.r][selectedSquare.c];
+                    board[selectedSquare.r][selectedSquare.c] = null;
+                    
+                    if (board[r][c].type === 'p' && r === 0) {
+                        board[r][c].type = 'q';
+                    }
+
+                    turn = 'b';
+                    selectedSquare = null;
+                    validMoves = [];
+                    renderBoard();
+                    return;
+                }
+            }
+
+            if (piece && piece.color === turn) {
+                selectedSquare = { r, c };
+                validMoves = getLegalMoves(r, c);
+            } else {
+                selectedSquare = null;
+                validMoves = [];
+            }
+            renderBoard();
+        }
+
+        function updateStatus() {
+            const statusEl = document.getElementById('status');
+            let totalLegalMoves = 0;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (board[r][c] && board[r][c].color === turn) {
+                        let tempMoves = 0;
+                        for (let r2 = 0; r2 < 8; r2++) {
+                            for (let c2 = 0; c2 < 8; c2++) {
+                                if (isValidBasicMove(r, c, r2, c2, board)) {
+                                    const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
+                                    tempBoard[r2][c2] = tempBoard[r][c];
+                                    tempBoard[r][c] = null;
+                                    if (!inCheck(turn, tempBoard)) tempMoves++;
+                                }
+                            }
+                        }
+                        totalLegalMoves += tempMoves;
+                    }
+                }
+            }
+
+            if (totalLegalMoves === 0) {
+                isGameOver = true;
+                if (inCheck(turn, board)) {
+                    statusEl.textContent = `게임 종료: 체크메이트! ${turn === 'w' ? '흑' : '백'} 승리!`;
+                } else {
+                    statusEl.textContent = `게임 종료: 무승부 (스테일메이트)`;
+                }
+            } else {
+                let text = turn === 'w' ? '백색 차례' : '흑색 차례 (생각 중...)';
+                if (inCheck(turn, board)) text += ' ⚠️ (체크!)';
+                statusEl.textContent = text;
+            }
+        }
+
+        renderBoard();
+    </script>
+</body>
+</html>
