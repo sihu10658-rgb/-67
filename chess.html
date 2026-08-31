@@ -56,7 +56,7 @@
             P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔'
         };
 
-        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 10000 };
+        const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
 
         let board = [
             [{type:'r',color:'b'},{type:'n',color:'b'},{type:'b',color:'b'},{type:'q',color:'b'},{type:'k',color:'b'},{type:'b',color:'b'},{type:'n',color:'b'},{type:'r',color:'b'}],
@@ -159,25 +159,28 @@
             return true;
         }
 
-        function getLegalMoves(r, c) {
-            const piece = board[r][c];
-            if (!piece || piece.color !== turn) return [];
-            let legal = [];
-
-            for (let r2 = 0; r2 < 8; r2++) {
-                for (let c2 = 0; c2 < 8; c2++) {
-                    if (isValidBasicMove(r, c, r2, c2, board)) {
-                        const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
-                        tempBoard[r2][c2] = tempBoard[r][c];
-                        tempBoard[r][c] = null;
-
-                        if (!inCheck(turn, tempBoard)) {
-                            legal.push({ r: r2, c: c2 });
+        function getAllLegalMoves(color, currentBoard) {
+            let allMoves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = currentBoard[r][c];
+                    if (piece && piece.color === color) {
+                        for (let r2 = 0; r2 < 8; r2++) {
+                            for (let c2 = 0; c2 < 8; c2++) {
+                                if (isValidBasicMove(r, c, r2, c2, currentBoard)) {
+                                    const tempBoard = currentBoard.map(row => row.map(cell => cell ? { ...cell } : null));
+                                    tempBoard[r2][c2] = tempBoard[r][c];
+                                    tempBoard[r][c] = null;
+                                    if (!inCheck(color, tempBoard)) {
+                                        allMoves.push({ from: { r, c }, to: { r: r2, c: c2 } });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-            return legal;
+            return allMoves;
         }
 
         function evaluateBoard(currentBoard) {
@@ -194,45 +197,67 @@
             return score;
         }
 
+        function minimax(currentBoard, depth, alpha, beta, isMaximizing) {
+            if (depth === 0) {
+                return evaluateBoard(currentBoard);
+            }
+
+            const color = isMaximizing ? 'w' : 'b';
+            const moves = getAllLegalMoves(color, currentBoard);
+
+            if (moves.length === 0) {
+                if (inCheck(color, currentBoard)) {
+                    return isMaximizing ? -50000 : 50000;
+                }
+                return 0;
+            }
+
+            if (isMaximizing) {
+                let maxEval = -Infinity;
+                for (let move of moves) {
+                    const tempBoard = currentBoard.map(row => row.map(cell => cell ? { ...cell } : null));
+                    tempBoard[move.to.r][move.to.c] = tempBoard[move.from.r][move.from.c];
+                    tempBoard[move.from.r][move.from.c] = null;
+
+                    let evaluation = minimax(tempBoard, depth - 1, alpha, beta, false);
+                    maxEval = Math.max(maxEval, evaluation);
+                    alpha = Math.max(alpha, evaluation);
+                    if (beta <= alpha) break;
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (let move of moves) {
+                    const tempBoard = currentBoard.map(row => row.map(cell => cell ? { ...cell } : null));
+                    tempBoard[move.to.r][move.to.c] = tempBoard[move.from.r][move.from.c];
+                    tempBoard[move.from.r][move.from.c] = null;
+
+                    let evaluation = minimax(tempBoard, depth - 1, alpha, beta, true);
+                    minEval = Math.min(minEval, evaluation);
+                    beta = Math.min(beta, evaluation);
+                    if (beta <= alpha) break;
+                }
+                return minEval;
+            }
+        }
+
         function makeAIMove() {
             if (isGameOver || turn !== 'b') return;
 
-            let allMoves = [];
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if (board[r][c] && board[r][c].color === 'b') {
-                        let legal = [];
-                        for (let r2 = 0; r2 < 8; r2++) {
-                            for (let c2 = 0; c2 < 8; c2++) {
-                                if (isValidBasicMove(r, c, r2, c2, board)) {
-                                    const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
-                                    tempBoard[r2][c2] = tempBoard[r][c];
-                                    tempBoard[r][c] = null;
-                                    if (!inCheck('b', tempBoard)) {
-                                        legal.push({ r: r2, c: c2 });
-                                    }
-                                }
-                            }
-                        }
-                        legal.forEach(m => allMoves.push({ from: {r, c}, to: m }));
-                    }
-                }
-            }
+            const moves = getAllLegalMoves('b', board);
+            if (moves.length === 0) return;
 
-            if (allMoves.length === 0) return;
+            let bestMove = moves[0];
+            let bestEval = Infinity;
 
-            let bestMove = allMoves[0];
-            let bestScore = 99999;
-            allMoves.sort(() => Math.random() - 0.5);
-
-            for (let move of allMoves) {
+            for (let move of moves) {
                 const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
                 tempBoard[move.to.r][move.to.c] = tempBoard[move.from.r][move.from.c];
                 tempBoard[move.from.r][move.from.c] = null;
 
-                let score = evaluateBoard(tempBoard);
-                if (score < bestScore) {
-                    bestScore = score;
+                let evalScore = minimax(tempBoard, 4, -Infinity, Infinity, true);
+                if (evalScore < bestEval) {
+                    bestEval = evalScore;
                     bestMove = move;
                 }
             }
@@ -281,7 +306,7 @@
             updateStatus();
 
             if (!isGameOver && turn === 'b') {
-                setTimeout(makeAIMove, 300);
+                setTimeout(makeAIMove, 100);
             }
         }
 
@@ -310,7 +335,9 @@
 
             if (piece && piece.color === turn) {
                 selectedSquare = { r, c };
-                validMoves = getLegalMoves(r, c);
+                validMoves = getAllLegalMoves(turn, board)
+                    .filter(m => m.from.r === r && m.from.c === c)
+                    .map(m => m.to);
             } else {
                 selectedSquare = null;
                 validMoves = [];
@@ -320,27 +347,9 @@
 
         function updateStatus() {
             const statusEl = document.getElementById('status');
-            let totalLegalMoves = 0;
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if (board[r][c] && board[r][c].color === turn) {
-                        let tempMoves = 0;
-                        for (let r2 = 0; r2 < 8; r2++) {
-                            for (let c2 = 0; c2 < 8; c2++) {
-                                if (isValidBasicMove(r, c, r2, c2, board)) {
-                                    const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
-                                    tempBoard[r2][c2] = tempBoard[r][c];
-                                    tempBoard[r][c] = null;
-                                    if (!inCheck(turn, tempBoard)) tempMoves++;
-                                }
-                            }
-                        }
-                        totalLegalMoves += tempMoves;
-                    }
-                }
-            }
+            const legalMoves = getAllLegalMoves(turn, board);
 
-            if (totalLegalMoves === 0) {
+            if (legalMoves.length === 0) {
                 isGameOver = true;
                 if (inCheck(turn, board)) {
                     statusEl.textContent = `게임 종료: 체크메이트! ${turn === 'w' ? '흑' : '백'} 승리!`;
