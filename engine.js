@@ -22,7 +22,7 @@ export function quiescenceSearch(currentBoard, alpha, beta, isMaximizing, qDepth
         if (evalScore >= beta) return beta;
         if (evalScore > alpha) alpha = evalScore;
     } else {
-        if (evalScore <= beta) return beta;
+        if (evalScore <= alpha) return alpha;
         if (evalScore < beta) beta = evalScore;
     }
 
@@ -123,3 +123,4 @@ export function findBestMoveIterative(currentBoard, maxDepth = 10) {
     }
     return bestMove;
 }
+```[cite: 4]
